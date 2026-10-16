@@ -45,10 +45,16 @@
   - dwc2_phy_init/dwc2_phy_update: phy init called before and after core reset
   - dwc2_phy_deinit(dwc2, hs_phy_type): phy deinit to disable PHY power, only deinit the phy used by core
   - dwc2_dcd_int_enable/dwc2_dcd_int_disable
+  - dwc2_int_set(rhport, role, enabled): host interrupt enable/disable
   - dwc2_remote_wakeup_delay
+
+  CFG_TUSB_DWC2_PORT_HEADER, when defined (e.g. in tusb_config.h), names a header providing these symbols
+  that replaces the MCU's own port header: e.g. for a bare-metal HAL instead of the vendor SDK.
 */
 
-#if defined(TUP_USBIP_DWC2_STM32)
+#if defined(CFG_TUSB_DWC2_PORT_HEADER)
+  #include CFG_TUSB_DWC2_PORT_HEADER
+#elif defined(TUP_USBIP_DWC2_STM32)
   #include "dwc2_stm32.h"
 #elif defined(TUP_USBIP_DWC2_ESP32)
   #include "dwc2_esp32.h"
