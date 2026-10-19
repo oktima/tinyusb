@@ -133,9 +133,12 @@ bool tuh_msc_ready(uint8_t dev_addr) {
 // PUBLIC API: SCSI COMMAND
 //--------------------------------------------------------------------+
 static inline void cbw_init(msc_cbw_t* cbw, uint8_t lun) {
+  // A tag of its own for each command, so a CSW is matched to its CBW (BOT 6.3.1): the first one spells TUSB
+  static uint32_t tag = 0x54555342;
+
   tu_memclr(cbw, sizeof(msc_cbw_t));
   cbw->signature = MSC_CBW_SIGNATURE;
-  cbw->tag       = 0x54555342; // TUSB
+  cbw->tag       = tag++;
   cbw->lun       = lun;
 }
 
@@ -352,6 +355,20 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
     case MSC_STAGE_STATUS:
       // SCSI op is complete
       p_msc->stage = MSC_STAGE_IDLE;
+
+      // The CSW is valid only if all of it came, with its signature and the tag of the CBW (BOT 6.3.1).
+      // When the status stage fails, a STALL for one, the buffer still holds an earlier command's CSW, which must not
+      // pass for this one's: the command fails with a phase error instead, after which the host shall perform a
+      // Reset Recovery (BOT 6.5, 5.3.3.1)
+      if (event != XFER_RESULT_SUCCESS || xferred_bytes != sizeof(msc_csw_t) ||
+          csw->signature != MSC_CSW_SIGNATURE || csw->tag != cbw->tag) {
+        TU_LOG_DRV("  MSCh invalid CSW: result %u, %u bytes\r\n", (unsigned) event, (unsigned) xferred_bytes);
+        csw->signature    = MSC_CSW_SIGNATURE;
+        csw->tag          = cbw->tag;
+        csw->data_residue = cbw->total_bytes;
+        csw->status       = MSC_CSW_STATUS_PHASE_ERROR;
+      }
+
       if (p_msc->complete_cb != NULL) {
         tuh_msc_complete_data_t const cb_data = {
             .cbw = cbw,
